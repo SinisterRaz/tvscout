@@ -153,6 +153,17 @@ tr:hover td{background:rgba(255,255,255,0.03);}
       </div>
     </div>
 
+    <div class="grid2" style="margin-top:10px;border-top:1px solid var(--frame);padding-top:10px">
+      <div>
+        <label><input type="checkbox" id="f-junk" checked> Drop council meetings, church and school channels</label>
+        <label><input type="checkbox" id="f-pub" checked> Drop public-access and local cable feeds</label>
+      </div>
+      <div>
+        <label><input type="checkbox" id="f-num" checked> Collapse numbered duplicates <span class="opt-note">— "News Live 1…10" becomes one</span></label>
+        <label><input type="checkbox" id="f-strict" checked> Strict English <span class="opt-note">— country must actually speak it</span></label>
+      </div>
+    </div>
+
     <div class="row">
       <span>Run</span><input type="number" id="conc" value="8" min="1" max="24">
       <span>at a time, giving each</span><input type="number" id="tmo" value="8" min="2" max="30">
@@ -232,6 +243,31 @@ const ENG_COUNTRIES = new Set([
   'AG','DM','GD','KN','LC','VC','MT','SG','PH','NG','GH','KE','UG','ZW',
   'ZM','MW','BW','NA','FJ','PG','GI','BM','KY','VG','VI','GU','PR'
 ]);
+
+// Countries that do not broadcast in English. A stream from one of these
+// only survives if its FEED explicitly declares eng — which is how real
+// international English services (CGTN, Arirang, France 24 English) get
+// through while a country-code fallback cannot smuggle anything in.
+// This is what let 15 Thai school channels past the last run.
+const NON_ENG = new Set([
+  'TH','CN','JP','KR','VN','ID','RU','TR','BR','PT','ES','MX','AR','CL','CO',
+  'PE','VE','FR','DE','AT','IT','PL','UA','CZ','SK','HU','RO','BG','GR','NL',
+  'BE','SE','NO','DK','FI','IS','EE','LV','LT','HR','RS','SI','BA','MK','AL',
+  'IR','IQ','SA','AE','EG','MA','DZ','TN','LY','SY','JO','LB','KW','QA','BH',
+  'OM','YE','AF','KZ','UZ','AZ','GE','AM','TW','HK','MO','MN','MM','KH','LA'
+]);
+
+// Government access, church broadcasters and school channels. Legitimate
+// television, just not what anyone tunes a TV to in a club.
+const JUNK_CATS = new Set(['legislative','religious','education']);
+
+// Public-access and municipal cable platforms. These hosts serve hundreds
+// of town-council and community channels tagged "general", which is what
+// inflated the last run's usable count.
+const PUB_HOSTS = [
+  'telvue.com','cablecast.tv','bozztv.com','castus','wowza.com',
+  'dltv.ac.th','pegcentral.com','swagit.com','granicus.com','viebit.com'
+];
 
 let DATA = null;      // raw api payloads
 let CAND = [];        // post-filter candidates
@@ -316,6 +352,10 @@ function filter(){
   const dropNsfw  = $('f-nsfw').checked;
   const dropGeo   = $('f-geo').checked;
   const dedupe    = $('f-dupe').checked;
+  const dropJunk  = $('f-junk').checked;
+  const dropPub   = $('f-pub').checked;
+  const collapse  = $('f-num').checked;
+  const strictEng = $('f-strict').checked;
 
   const drops = {};
   const bump = k => { drops[k] = (drops[k]||0) + 1; };
@@ -337,20 +377,36 @@ function filter(){
     if(dropNsfw && ch && ch.is_nsfw){ bump('adult channel'); continue; }
     if(ch && ch.closed){ bump('channel closed'); continue; }
 
-    // Language. Prefer the feed's declared languages; fall back to the
-    // channel's country. Streams with neither are dropped rather than
-    // guessed at, so the export stays clean.
+    // Language. The feed's declared languages are the only real evidence;
+    // country is a fallback for streams that have no feed record.
+    //
+    // Strict mode closes the hole that let 15 Thai school channels through
+    // last run: for a country that doesn't broadcast in English, the feed
+    // must SAY eng. No country fallback, no benefit of the doubt. Genuine
+    // international English services still pass, because they declare it.
     if(wantEng){
       const fd = (s.channel && s.feed) ? feedBy.get(s.channel + '@' + s.feed) : null;
+      const declared = fd && fd.languages && fd.languages.length
+        ? fd.languages.includes('eng') : null;
+      const cc = ch ? ch.country : '';
+
       let isEng;
-      if(fd && fd.languages && fd.languages.length){
-        isEng = fd.languages.includes('eng');
-      } else if(ch && ch.country){
-        isEng = engCountry.has(ch.country) || ENG_COUNTRIES.has(ch.country);
-      } else {
-        isEng = false;
-      }
+      if(declared !== null)                      isEng = declared;
+      else if(strictEng && NON_ENG.has(cc))      isEng = false;
+      else if(cc)                                isEng = engCountry.has(cc) || ENG_COUNTRIES.has(cc);
+      else                                       isEng = false;
+
       if(!isEng){ bump('not english'); continue; }
+    }
+
+    // Council meetings, church broadcasts, school lessons.
+    if(dropJunk && ch && (ch.categories||[]).some(x => JUNK_CATS.has(x))){
+      bump('government, church or school'); continue;
+    }
+
+    // Public-access and municipal cable platforms.
+    if(dropPub && PUB_HOSTS.some(h => s.url.includes(h))){
+      bump('public access or local cable'); continue;
     }
 
     out.push({
@@ -376,6 +432,30 @@ function filter(){
     }
     final = [...best.values()];
   }
+
+  // Collapse numbered duplicates. "ABC News Live 1" through "10" are ten
+  // copies of one channel; keep the best and drop the rest. Only fires on
+  // a trailing number with siblings, so "Channel 4" and "MTV 90s" survive.
+  if(collapse){
+    const groups = new Map();
+    for(const c of final){
+      const stem = c.name.replace(/[\s\-–—]*#?\d{1,3}\s*$/, '').trim();
+      const key = (stem || c.name).toLowerCase();
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    const kept = [];
+    let removed = 0;
+    for(const [, g] of groups){
+      if(g.length === 1){ kept.push(g[0]); continue; }
+      g.sort((a,b) => qnum(b.quality) - qnum(a.quality) || a.name.localeCompare(b.name));
+      kept.push(g[0]);
+      removed += g.length - 1;
+    }
+    if(removed) drops['numbered duplicate'] = (drops['numbered duplicate']||0) + removed;
+    final = kept;
+  }
+
   final.sort((a,b) => a.name.localeCompare(b.name));
 
   CAND = final;
@@ -573,7 +653,8 @@ document.querySelectorAll('[data-v]').forEach(b => {
   b.onclick = () => { view = b.dataset.v; render(); };
 });
 
-['f-eng','f-https','f-hdr','f-block','f-nsfw','f-geo','f-dupe'].forEach(id => {
+['f-eng','f-https','f-hdr','f-block','f-nsfw','f-geo','f-dupe',
+ 'f-junk','f-pub','f-num','f-strict'].forEach(id => {
   $(id).onchange = () => { if(DATA && !RUNNING) filter(); };
 });
 
