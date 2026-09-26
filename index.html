@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sinister IPTV Scout</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0;}
+
+:root{
+  --bg:#080a0c;
+  --panel:#0e1216;
+  --frame:#1a2129;
+  --gold:#c8a84a;
+  --cyan:#00e5ff;
+  --dim:#5d6b78;
+  --pass:#44ff88;
+  --fail:#ff4455;
+  --warn:#ffaa33;
+}
+
+body{
+  background:var(--bg);
+  color:var(--cyan);
+  font-family:'VT323',monospace;
+  font-size:19px;
+  min-height:100vh;
+  padding:18px;
+  position:relative;
+}
+
+/* CRT scanlines */
+body::after{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(
+    180deg,
+    rgba(0,0,0,0) 0px,
+    rgba(0,0,0,0) 2px,
+    rgba(0,0,0,0.22) 3px,
+    rgba(0,0,0,0.22) 4px
+  );
+  pointer-events:none;
+  z-index:9999;
+}
+
+.wrap{max-width:1180px;margin:0 auto;position:relative;z-index:1;}
+
+h1{
+  font-family:'Press Start 2P',monospace;
+  font-size:15px;
+  color:var(--gold);
+  letter-spacing:1px;
+  text-shadow:0 0 12px rgba(200,168,74,0.5);
+  margin-bottom:6px;
+}
+.sub{color:var(--dim);margin-bottom:18px;font-size:17px;}
+
+.panel{
+  background:var(--panel);
+  border:1px solid var(--frame);
+  padding:14px;
+  margin-bottom:14px;
+}
+.panel h2{
+  font-family:'Press Start 2P',monospace;
+  font-size:10px;
+  color:var(--gold);
+  margin-bottom:12px;
+  letter-spacing:1px;
+}
+
+label{display:flex;align-items:center;gap:8px;cursor:pointer;padding:3px 0;line-height:1.3;}
+input[type=checkbox]{accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0;cursor:pointer;}
+.opt-note{color:var(--dim);font-size:16px;}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:10px 22px;}
+
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;}
+
+button{
+  font-family:'VT323',monospace;
+  font-size:19px;
+  background:#131a20;
+  color:var(--cyan);
+  border:1px solid var(--frame);
+  padding:7px 16px;
+  cursor:pointer;
+}
+button:hover:not(:disabled){border-color:var(--cyan);}
+button:disabled{opacity:0.35;cursor:not-allowed;}
+button.go{border-color:var(--gold);color:var(--gold);}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+
+input[type=number],input[type=text]{
+  font-family:'VT323',monospace;font-size:18px;
+  background:#131a20;color:var(--cyan);
+  border:1px solid var(--frame);padding:5px 8px;width:86px;
+}
+
+.bar{height:14px;background:#131a20;border:1px solid var(--frame);margin:12px 0 6px;}
+.bar i{display:block;height:100%;background:var(--gold);width:0;transition:width .2s;}
+
+.stats{display:flex;gap:22px;flex-wrap:wrap;color:var(--dim);margin-top:8px;}
+.stats b{color:var(--cyan);font-weight:normal;}
+.stats .p b{color:var(--pass);}
+.stats .f b{color:var(--fail);}
+
+#log{
+  max-height:160px;overflow-y:auto;
+  color:var(--dim);font-size:16px;line-height:1.45;
+  border-top:1px solid var(--frame);margin-top:12px;padding-top:8px;
+}
+#log div{white-space:pre-wrap;word-break:break-word;}
+
+table{width:100%;border-collapse:collapse;font-size:17px;}
+th{
+  text-align:left;color:var(--gold);font-weight:normal;
+  border-bottom:1px solid var(--frame);padding:6px 8px;
+  position:sticky;top:0;background:var(--panel);
+}
+td{padding:5px 8px;border-bottom:1px solid #141a20;vertical-align:top;}
+tr:hover td{background:rgba(255,255,255,0.03);}
+.tblwrap{max-height:520px;overflow-y:auto;border:1px solid var(--frame);}
+.ok{color:var(--pass);}
+.no{color:var(--fail);}
+.wr{color:var(--warn);}
+.u{color:var(--dim);font-size:14px;word-break:break-all;}
+.empty{padding:34px 16px;text-align:center;color:var(--dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>SINISTER IPTV SCOUT</h1>
+  <p class="sub">Finds which iptv-org channels will actually play inside Second Life's browser. Most won't — this tells you which do.</p>
+
+  <div class="panel">
+    <h2>WHAT TO KEEP</h2>
+    <div class="grid2">
+      <div>
+        <label><input type="checkbox" id="f-eng" checked> English only <span class="opt-note">— by feed language, falling back to country</span></label>
+        <label><input type="checkbox" id="f-https" checked> HTTPS only <span class="opt-note">— plain http is blocked outright</span></label>
+        <label><input type="checkbox" id="f-hdr" checked> Drop streams needing custom headers <span class="opt-note">— browsers can't send these</span></label>
+      </div>
+      <div>
+        <label><input type="checkbox" id="f-block" checked> Drop DMCA and NSFW takedowns</label>
+        <label><input type="checkbox" id="f-nsfw" checked> Drop adult channels</label>
+        <label><input type="checkbox" id="f-geo" checked> Drop geo-blocked and flagged streams</label>
+        <label><input type="checkbox" id="f-dupe" checked> One stream per channel <span class="opt-note">— best quality wins</span></label>
+      </div>
+    </div>
+
+    <div class="row">
+      <span>Run</span><input type="number" id="conc" value="8" min="1" max="24">
+      <span>at a time, giving each</span><input type="number" id="tmo" value="8" min="2" max="30">
+      <span>seconds. Stop after</span><input type="number" id="cap" value="600" min="0">
+      <span class="opt-note">(0 = test everything)</span>
+    </div>
+
+    <div class="row">
+      <button class="go" id="btn-load">Load channel list</button>
+      <button id="btn-test" disabled>Test playback</button>
+      <button id="btn-stop" disabled>Stop</button>
+      <button id="btn-export" disabled>Export iptv.json</button>
+      <button id="btn-csv" disabled>Export report</button>
+    </div>
+
+    <div class="bar"><i id="bar"></i></div>
+    <div class="stats">
+      <span>Candidates <b id="s-cand">0</b></span>
+      <span>Tested <b id="s-done">0</b></span>
+      <span class="p">Playable <b id="s-pass">0</b></span>
+      <span class="f">Dead <b id="s-fail">0</b></span>
+    </div>
+
+    <div id="log"><div>Ready. Load the channel list to begin.</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>RESULTS</h2>
+    <div class="row" style="margin:0 0 10px">
+      <button data-v="all">All</button>
+      <button data-v="pass">Playable</button>
+      <button data-v="fail">Dead</button>
+      <input type="text" id="q" placeholder="filter by name" style="width:200px">
+    </div>
+    <div class="tblwrap">
+      <table>
+        <thead><tr>
+          <th style="width:30%">Channel</th>
+          <th style="width:8%">Quality</th>
+          <th style="width:9%">Country</th>
+          <th style="width:13%">Result</th>
+          <th style="width:40%">Stream</th>
+        </tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+      <div class="empty" id="empty">Nothing loaded yet.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   SINISTER IPTV SCOUT
+   Vets iptv-org streams for playability inside SL's CEF browser.
+
+   Two stages:
+     1. Metadata filter — removes what provably cannot work in a
+        browser (plain http on an https page, streams requiring a
+        custom Referer or User-Agent, DMCA/NSFW removals, geo-blocks).
+     2. Live CORS probe — hls.js pulls segments over XHR, so the host
+        must send Access-Control-Allow-Origin. Most don't. Only a real
+        request finds out.
+
+   Run this from the same origin you'll ship on (your GitHub Pages
+   site). Results from file:// or a different host are meaningless,
+   because CORS is judged per origin.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const API = 'https://iptv-org.github.io/api/';
+
+// Feeds carry language; channels don't. Where a stream has no feed we
+// fall back to the channel's country, so these are the countries whose
+// broadcasts we treat as English by default.
+const ENG_COUNTRIES = new Set([
+  'US','GB','UK','CA','AU','NZ','IE','ZA','JM','TT','BB','BS','BZ','GY',
+  'AG','DM','GD','KN','LC','VC','MT','SG','PH','NG','GH','KE','UG','ZW',
+  'ZM','MW','BW','NA','FJ','PG','GI','BM','KY','VG','VI','GU','PR'
+]);
+
+let DATA = null;      // raw api payloads
+let CAND = [];        // post-filter candidates
+let RESULTS = [];     // probe results
+let RUNNING = false;
+let ABORT = false;
+let view = 'all';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => (
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function log(msg){
+  const el = $('log');
+  const d = document.createElement('div');
+  d.textContent = msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+function stat(){
+  $('s-cand').textContent = CAND.length;
+  $('s-done').textContent = RESULTS.length;
+  $('s-pass').textContent = RESULTS.filter(r=>r.ok).length;
+  $('s-fail').textContent = RESULTS.filter(r=>!r.ok).length;
+}
+
+/* ── Stage 0: pull the API ──────────────────────────────────────── */
+
+async function getJSON(name){
+  const r = await fetch(API + name, {cache:'no-store'});
+  if(!r.ok) throw new Error(name + ' returned ' + r.status);
+  return r.json();
+}
+
+async function load(){
+  $('btn-load').disabled = true;
+  log('Fetching channel data…');
+  try {
+    const [channels, feeds, streams, blocklist, countries] = await Promise.all([
+      getJSON('channels.json'),
+      getJSON('feeds.json'),
+      getJSON('streams.json'),
+      getJSON('blocklist.json'),
+      getJSON('countries.json')
+    ]);
+    DATA = {channels, feeds, streams, blocklist, countries};
+    log('Got ' + streams.length.toLocaleString() + ' streams across ' +
+        channels.length.toLocaleString() + ' channels.');
+    filter();
+  } catch(e){
+    log('Could not reach the API: ' + e.message);
+    log('Check your connection, then reload the list.');
+    $('btn-load').disabled = false;
+  }
+}
+
+/* ── Stage 1: metadata filter ───────────────────────────────────── */
+
+function qnum(q){
+  const m = /(\d+)/.exec(q||'');
+  return m ? parseInt(m[1],10) : 0;
+}
+
+function filter(){
+  const {channels, feeds, streams, blocklist, countries} = DATA;
+
+  const chById = new Map(channels.map(c => [c.id, c]));
+  const feedBy = new Map(feeds.map(f => [f.channel + '@' + f.id, f]));
+  const blocked = new Set(blocklist.map(b => b.channel));
+
+  // Countries whose official languages include English, from the API
+  // itself — more reliable than my hardcoded list, which is the fallback.
+  const engCountry = new Set(
+    countries.filter(c => (c.languages||[]).includes('eng')).map(c => c.code)
+  );
+
+  const wantEng   = $('f-eng').checked;
+  const wantHttps = $('f-https').checked;
+  const dropHdr   = $('f-hdr').checked;
+  const dropBlock = $('f-block').checked;
+  const dropNsfw  = $('f-nsfw').checked;
+  const dropGeo   = $('f-geo').checked;
+  const dedupe    = $('f-dupe').checked;
+
+  const drops = {};
+  const bump = k => { drops[k] = (drops[k]||0) + 1; };
+  const out = [];
+
+  for(const s of streams){
+    if(!s.url){ bump('no url'); continue; }
+
+    const ch = s.channel ? chById.get(s.channel) : null;
+
+    // Browsers cannot set Referer or User-Agent from JS. Unfixable.
+    if(dropHdr && (s.referrer || s.user_agent)){ bump('needs custom headers'); continue; }
+
+    // An https page will not load http media. Unfixable.
+    if(wantHttps && !/^https:/i.test(s.url)){ bump('plain http'); continue; }
+
+    if(dropGeo && s.label){ bump('flagged: ' + s.label.toLowerCase()); continue; }
+    if(dropBlock && s.channel && blocked.has(s.channel)){ bump('dmca or nsfw removal'); continue; }
+    if(dropNsfw && ch && ch.is_nsfw){ bump('adult channel'); continue; }
+    if(ch && ch.closed){ bump('channel closed'); continue; }
+
+    // Language. Prefer the feed's declared languages; fall back to the
+    // channel's country. Streams with neither are dropped rather than
+    // guessed at, so the export stays clean.
+    if(wantEng){
+      const fd = (s.channel && s.feed) ? feedBy.get(s.channel + '@' + s.feed) : null;
+      let isEng;
+      if(fd && fd.languages && fd.languages.length){
+        isEng = fd.languages.includes('eng');
+      } else if(ch && ch.country){
+        isEng = engCountry.has(ch.country) || ENG_COUNTRIES.has(ch.country);
+      } else {
+        isEng = false;
+      }
+      if(!isEng){ bump('not english'); continue; }
+    }
+
+    out.push({
+      id:      s.channel || s.url,
+      channel: s.channel || '',
+      name:    s.title || (ch ? ch.name : '') || s.channel || 'Untitled',
+      url:     s.url,
+      quality: s.quality || '',
+      country: ch ? ch.country : '',
+      cats:    ch ? (ch.categories||[]) : [],
+      logo:    ''
+    });
+  }
+
+  // One per channel, best quality first.
+  let final = out;
+  if(dedupe){
+    const best = new Map();
+    for(const c of out){
+      const key = c.channel || c.url;
+      const prev = best.get(key);
+      if(!prev || qnum(c.quality) > qnum(prev.quality)) best.set(key, c);
+    }
+    final = [...best.values()];
+  }
+  final.sort((a,b) => a.name.localeCompare(b.name));
+
+  CAND = final;
+  RESULTS = [];
+
+  log('— filter —');
+  Object.keys(drops).sort((a,b)=>drops[b]-drops[a]).forEach(k => {
+    log('  removed ' + drops[k].toLocaleString().padStart(6) + '  ' + k);
+  });
+  log(CAND.length.toLocaleString() + ' candidates left. These are only the ones that ' +
+      'could work — the probe finds out which do.');
+
+  $('btn-test').disabled = CAND.length === 0;
+  $('btn-load').disabled = false;
+  stat();
+  render();
+}
+
+/* ── Stage 2: CORS probe ────────────────────────────────────────── */
+
+async function probe(c, timeoutMs){
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  const started = performance.now();
+  try {
+    const r = await fetch(c.url, {mode:'cors', signal:ctl.signal, cache:'no-store'});
+    clearTimeout(t);
+    if(!r.ok) return {ok:false, why:'HTTP ' + r.status};
+
+    const text = await r.text();
+    if(!/#EXTM3U/i.test(text)) return {ok:false, why:'not a playlist'};
+
+    // A master playlist points at variant playlists; both must be
+    // reachable, but the variant lives on the same host, so passing
+    // the manifest is a strong signal.
+    const master = /#EXT-X-STREAM-INF/i.test(text);
+    return {
+      ok: true,
+      why: master ? 'master playlist' : 'media playlist',
+      ms: Math.round(performance.now() - started)
+    };
+  } catch(e){
+    clearTimeout(t);
+    if(e.name === 'AbortError') return {ok:false, why:'timed out'};
+    // A cross-origin rejection surfaces as an opaque TypeError.
+    return {ok:false, why:'blocked by CORS'};
+  }
+}
+
+async function runTests(){
+  if(RUNNING) return;
+  RUNNING = true; ABORT = false;
+  RESULTS = [];
+
+  const conc = Math.max(1, Math.min(24, parseInt($('conc').value)||8));
+  const tmo  = Math.max(2, Math.min(30, parseInt($('tmo').value)||8)) * 1000;
+  const cap  = Math.max(0, parseInt($('cap').value)||0);
+  const list = cap > 0 ? CAND.slice(0, cap) : CAND;
+
+  $('btn-test').disabled = true;
+  $('btn-load').disabled = true;
+  $('btn-stop').disabled = false;
+  $('btn-export').disabled = true;
+  $('btn-csv').disabled = true;
+
+  log('— probe —');
+  log('Testing ' + list.length.toLocaleString() + ' streams, ' + conc + ' at a time.');
+
+  let next = 0;
+  async function worker(){
+    while(!ABORT){
+      const i = next++;
+      if(i >= list.length) return;
+      const c = list[i];
+      const res = await probe(c, tmo);
+      RESULTS.push(Object.assign({}, c, res));
+      const pct = Math.round(RESULTS.length / list.length * 100);
+      $('bar').style.width = pct + '%';
+      if(RESULTS.length % 10 === 0 || RESULTS.length === list.length){ stat(); render(); }
+    }
+  }
+
+  await Promise.all(Array.from({length:conc}, worker));
+
+  RESULTS.sort((a,b) => (b.ok - a.ok) || a.name.localeCompare(b.name));
+  stat(); render();
+
+  const pass = RESULTS.filter(r => r.ok).length;
+  const rate = RESULTS.length ? Math.round(pass / RESULTS.length * 100) : 0;
+  log(ABORT ? 'Stopped early.' : 'Done.');
+  log(pass.toLocaleString() + ' of ' + RESULTS.length.toLocaleString() +
+      ' playable (' + rate + '%).');
+  if(pass) log('Export iptv.json to drop alongside db.json.');
+
+  RUNNING = false;
+  $('btn-test').disabled = false;
+  $('btn-load').disabled = false;
+  $('btn-stop').disabled = true;
+  $('btn-export').disabled = pass === 0;
+  $('btn-csv').disabled = RESULTS.length === 0;
+}
+
+/* ── Results table ──────────────────────────────────────────────── */
+
+function render(){
+  const q = $('q').value.trim().toLowerCase();
+  let rows = RESULTS.length ? RESULTS : CAND.map(c => Object.assign({}, c, {pending:true}));
+
+  if(view === 'pass') rows = rows.filter(r => r.ok);
+  if(view === 'fail') rows = rows.filter(r => r.ok === false);
+  if(q) rows = rows.filter(r => r.name.toLowerCase().includes(q));
+
+  $('empty').style.display = rows.length ? 'none' : 'block';
+  if(!rows.length){
+    $('tb').innerHTML = '';
+    $('empty').textContent = CAND.length
+      ? 'Nothing matches that filter.'
+      : 'Nothing loaded yet.';
+    return;
+  }
+
+  const shown = rows.slice(0, 500);
+  $('tb').innerHTML = shown.map(r => {
+    let cell;
+    if(r.pending)      cell = '<span class="wr">untested</span>';
+    else if(r.ok)      cell = '<span class="ok">plays</span> <span class="u">' + r.ms + 'ms</span>';
+    else               cell = '<span class="no">' + esc(r.why) + '</span>';
+    return '<tr>' +
+      '<td>' + esc(r.name) + '</td>' +
+      '<td>' + esc(r.quality || '—') + '</td>' +
+      '<td>' + esc(r.country || '—') + '</td>' +
+      '<td>' + cell + '</td>' +
+      '<td class="u">' + esc(r.url) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  if(rows.length > 500){
+    $('empty').style.display = 'block';
+    $('empty').textContent = 'Showing 500 of ' + rows.length.toLocaleString() + '. Narrow the filter to see the rest.';
+  }
+}
+
+/* ── Export ─────────────────────────────────────────────────────── */
+
+function download(name, text, mime){
+  const b = new Blob([text], {type:mime});
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = u; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(u), 1000);
+}
+
+function exportJSON(){
+  const pass = RESULTS.filter(r => r.ok);
+  const payload = {
+    generated: new Date().toISOString(),
+    source: 'iptv-org.github.io/api',
+    origin: location.origin,
+    note: 'CORS verified from this origin. Re-run periodically; these links rot.',
+    count: pass.length,
+    channels: pass.map(r => ({
+      id: r.channel || r.url,
+      name: r.name,
+      url: r.url,
+      quality: r.quality,
+      country: r.country,
+      categories: r.cats
+    }))
+  };
+  download('iptv.json', JSON.stringify(payload, null, 2), 'application/json');
+  log('Exported ' + pass.length + ' channels.');
+}
+
+function exportCSV(){
+  const head = 'name,quality,country,result,reason,url\n';
+  const body = RESULTS.map(r => [
+    r.name, r.quality, r.country, r.ok ? 'plays' : 'dead', r.why, r.url
+  ].map(v => '"' + String(v==null?'':v).replace(/"/g,'""') + '"').join(',')).join('\n');
+  download('iptv-report.csv', head + body, 'text/csv');
+  log('Exported full report.');
+}
+
+/* ── Wiring ─────────────────────────────────────────────────────── */
+
+$('btn-load').onclick   = load;
+$('btn-test').onclick   = runTests;
+$('btn-stop').onclick   = () => { ABORT = true; log('Stopping…'); };
+$('btn-export').onclick = exportJSON;
+$('btn-csv').onclick    = exportCSV;
+$('q').oninput = render;
+
+document.querySelectorAll('[data-v]').forEach(b => {
+  b.onclick = () => { view = b.dataset.v; render(); };
+});
+
+['f-eng','f-https','f-hdr','f-block','f-nsfw','f-geo','f-dupe'].forEach(id => {
+  $(id).onchange = () => { if(DATA && !RUNNING) filter(); };
+});
+
+if(location.protocol === 'file:'){
+  log('Heads up: running from file://. CORS behaves differently here, so ' +
+      'results will not match your live site. Host this on sinisterraz.github.io ' +
+      'and run it there.');
+}
+</script>
+</body>
+</html>
